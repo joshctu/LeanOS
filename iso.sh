@@ -6,10 +6,10 @@ mkdir -p isodir
 mkdir -p isodir/boot
 mkdir -p isodir/boot/grub
 
-cp sysroot/boot/myos.kernel isodir/boot/myos.kernel
+cp sysroot/boot/LEANOS.kernel isodir/boot/LEANOS.kernel
 cat > isodir/boot/grub/grub.cfg << EOF
-menuentry "myos" {
-	multiboot /boot/myos.kernel
+menuentry "leanOS" {
+	multiboot /boot/LEANOS.kernel debug=true loglevel=2
 }
 EOF
-grub-mkrescue -o myos.iso isodir
+grub-mkrescue -o LEANOS.iso isodir
