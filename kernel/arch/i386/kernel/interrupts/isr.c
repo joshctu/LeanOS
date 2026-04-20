@@ -1,6 +1,5 @@
 #include <kernel/io.h>
 #include <kernel/isr.h>
-#include <kernel/outbuf.h>
 #include <kernel/pic.h>
 #include <kernel/shell.h>
 #include <kernel/tty.h>
@@ -28,6 +27,8 @@ char scancode_to_ascii_shifted[128] = {
 __attribute__((interrupt, used)) void
 keyboard_interrupt_handler(interrupt_frame_t *f) {
 
+  key_event_t new_event;
+
   uint8_t scancode = inb(0x60);
 
   static int shift_down = 0;
@@ -40,28 +41,47 @@ keyboard_interrupt_handler(interrupt_frame_t *f) {
   }
 
   if (extended_code) {
+    // up arrow
     if (scancode == 0x48) {
-      cursor_up();
       outb(PIC1_COMMAND, PIC_EOI);
       extended_code = 0;
       return;
     }
+    // down arrow
     if (scancode == 0x50) {
-      cursor_down();
       outb(PIC1_COMMAND, PIC_EOI);
       extended_code = 0;
       return;
     }
+    // cursor left
     if (scancode == 0x4B) {
-      guard_cursor_left();
       outb(PIC1_COMMAND, PIC_EOI);
       extended_code = 0;
       return;
     }
+
+    // cursor right
     if (scancode == 0x4D) {
-      guard_cursor_right();
       outb(PIC1_COMMAND, PIC_EOI);
       extended_code = 0;
+      return;
+    }
+    // page up
+    if (scancode == 0x49) {
+      new_event.key = KEY_PG_UP;
+      new_event.ch = '\0';
+      extended_code = 0;
+      terminal_handle_key(new_event);
+      outb(PIC1_COMMAND, PIC_EOI);
+      return;
+    }
+    // page down
+    if (scancode == 0x51) {
+      new_event.key = KEY_PG_DOWN;
+      new_event.ch = '\0';
+      extended_code = 0;
+      terminal_handle_key(new_event);
+      outb(PIC1_COMMAND, PIC_EOI);
       return;
     }
   }
@@ -88,14 +108,9 @@ keyboard_interrupt_handler(interrupt_frame_t *f) {
 
   // Enter key
   if (scancode == 0x1C) {
-    handle_shell_submit();
-    outb(PIC1_COMMAND, PIC_EOI);
-    return;
-  }
-
-  // Add backspace support
-  if (scancode == 0x0E) {
-    buffer_write('\b');
+    new_event.ch = '\0';
+    new_event.key = KEY_ENTER;
+    terminal_handle_key(new_event);
     outb(PIC1_COMMAND, PIC_EOI);
     return;
   }
@@ -104,7 +119,9 @@ keyboard_interrupt_handler(interrupt_frame_t *f) {
                       : scancode_to_ascii[scancode];
 
   if (c) {
-    buffer_write(c);
+    new_event.ch = c;
+    new_event.key = KEY_CHAR;
+    terminal_handle_key(new_event);
   }
 
   outb(PIC1_COMMAND, PIC_EOI);

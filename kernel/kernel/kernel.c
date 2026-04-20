@@ -3,14 +3,14 @@
 
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
+#include <kernel/logs.h>
 #include <kernel/mmap.h>
 #include <kernel/multiboot.h>
 #include <kernel/paging.h>
 #include <kernel/pic.h>
 #include <kernel/pit.h>
-#include <kernel/tty.h>
-#include <kernel/logs.h>
 #include <kernel/shell.h>
+#include <kernel/tty.h>
 
 extern uint32_t _kernel_start;
 
@@ -30,13 +30,12 @@ void kernel_main(uint32_t magic, uint32_t addr) {
   } else {
     printf("Booting using multiboot standard...\n");
   }
-  generate_boot_logs(mbi); 
-
-  __asm__ __volatile__("sti");
-  pit_reload(0xFFFE);
+  generate_boot_logs(mbi);
 
   shell_init();
 
+  __asm__ __volatile__("sti");
+  pit_reload(0xFFFE);
 
   while (1) {
     __asm__ __volatile__("hlt");

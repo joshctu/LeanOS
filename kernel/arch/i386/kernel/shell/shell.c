@@ -1,34 +1,31 @@
-#include <kernel/tty.h>
 #include <stdint.h>
 #include <stdio.h>
 
-char *prompt = "root@leanos$ ";
+#include <kernel/input_proc.h>
+#include <kernel/shell.h>
+#include <kernel/tty.h>
 
-char *get_prompt() { return prompt; }
-void generate_prompt() { printf("\n%s", prompt); }
+shell_t shell;
 
-char *trim_leading_whitespace(char *str) {
+void shell_init() {
+  terminal_setcolor(4);
+  printf("\nInitializing shell... [Ok]\n");
+
+  shell.prompt = PROMPT;
+
+  active_program_t *active_program = get_active_program();
+
+  active_program->shell = &shell;
+  input_proc_reset();
 }
 
-char *trim_trailing_whitespace(char *str) {
-}
+void shell_read(size_t argc, char *argv[]) {
+  if (argc == 0)
+    return;
 
-char *trim_middling_whitespace(char *str) {
-}
-
-void shell_init() { 
-	printf("\nInitializing shell... [Ok]");
-	generate_prompt(); 
-}
-
-void shell_read() {
-	stdin_buffer_t *stdin_buffer = get_stdin_buffer();
-	char raw_input[stdin_buffer->size + 1];
-	for (size_t i = 0; i < stdin_buffer->size + 1; i++) {
-		raw_input[i] = stdin_buffer_read();
-	}
-	printf("\n%s", raw_input);
-	generate_prompt();
+  // if (*argv[0] == "clear") {
+  //   terminal_clear_screen();
+  //  }
 }
 
 void shell_execute() {
