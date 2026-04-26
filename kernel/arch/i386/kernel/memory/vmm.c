@@ -117,13 +117,13 @@ void *vmm_kalloc_mem() {
       break;
 
     if (last_mapped_va < curr_region->next->start_addr) {
-      uint32_t pde = last_mapped_va >> 22 & 0x3FF;
+      uint32_t pde = (last_mapped_va >> 22) & 0x3FF;
 
       if (!(kpd_addr[pde] & 0x1)) {
         kpd_addr[pde] = alloc_phys_pg() | 0x003;
       }
 
-      uint32_t pt = last_mapped_va >> 12 & 0x3FF;
+      uint32_t pt = (last_mapped_va >> 12) & 0x3FF;
       uint32_t *pte = (uint32_t *)(0xFFC00000 + pde * 0x1000);
       pte[pt] = alloc_phys_pg() | 0x003;
 
@@ -160,6 +160,7 @@ int vmm_free_mem(void *ptr) {
       // Zero out 4Kb page
       dealloc_phys_pg(pte[pt] & 0xFFFFF000);
       pte[pt] = 0;
+      __asm__ __volatile__("invlpg (%0)" ::"r"(i->next->start_addr) : "memory");
 
       for (x = 0; pte[x] == 0 && x < 1024; x++)
         ;

@@ -22,9 +22,7 @@ static active_program_t active_program;
 
 uint16_t *get_terminal_buffer() { return terminal_buffer; }
 active_program_t *get_active_program() { return &active_program; }
-size_t get_cursor(void) {
-  return ((sbb_row_idx - get_sbb_head()) * VGA_WIDTH) + sbb_col_idx;
-}
+size_t get_cursor(void) { return ((sbb_row_idx - get_sbb_head()) * VGA_WIDTH) + sbb_col_idx; }
 
 void set_cursor(size_t pos) {
   outb(0x3D4, 0x0F);
@@ -53,7 +51,6 @@ void cursor_right() {
 }
 
 void new_line() {
-  sbb_col_idx = input_start;
 
   // TODO: Trying to write to sbb line 222 causes a triple fault.
   if (++sbb_row_idx == 221) {
@@ -63,6 +60,7 @@ void new_line() {
   if (sbb_row_idx > 24 && (sbb_row_idx - get_sbb_head()) % 25 == 0) {
     shift_head(1, DIR_DOWN);
   }
+  sbb_col_idx = input_start;
   set_cursor(get_cursor());
 }
 
@@ -80,8 +78,7 @@ void terminal_render_line(const tty_line_t *line) {
 
   // Clear row
   for (size_t i = 0; i < VGA_WIDTH; i++) {
-    terminal_buffer[(curr_row * VGA_WIDTH) + i] =
-        vga_entry(' ', terminal_color);
+    terminal_buffer[(curr_row * VGA_WIDTH) + i] = vga_entry(' ', terminal_color);
   }
 
   sbb_col_idx = 0;
@@ -89,16 +86,14 @@ void terminal_render_line(const tty_line_t *line) {
   // Draw prompt
   terminal_setcolor(VGA_COLOR_LIGHT_BROWN);
   for (size_t i = 0; line->prompt[i]; i++) {
-    terminal_buffer[(curr_row * VGA_WIDTH) + sbb_col_idx] =
-        vga_entry(line->prompt[i], terminal_color);
+    terminal_buffer[(curr_row * VGA_WIDTH) + sbb_col_idx] = vga_entry(line->prompt[i], terminal_color);
     sbb_col_idx++;
   }
 
   // Draw buffer contents
   terminal_setcolor(VGA_COLOR_GREEN);
   for (size_t i = 0; i < line->size; i++) {
-    terminal_buffer[(curr_row * VGA_WIDTH) + sbb_col_idx] =
-        vga_entry(line->buf[i], terminal_color);
+    terminal_buffer[(curr_row * VGA_WIDTH) + sbb_col_idx] = vga_entry(line->buf[i], terminal_color);
     sbb_col_idx++;
   }
 
@@ -121,8 +116,7 @@ void terminal_commit_line(const tty_line_t *line) {
 
   terminal_setcolor(VGA_COLOR_GREEN);
   for (size_t i = 0; i < line->size; i++) {
-    line_to_commit[strlen(line->prompt) + i] =
-        vga_entry(line->buf[i], terminal_color);
+    line_to_commit[strlen(line->prompt) + i] = vga_entry(line->buf[i], terminal_color);
   }
 
   sbb_write_line(sbb_row_idx, &line_to_commit);

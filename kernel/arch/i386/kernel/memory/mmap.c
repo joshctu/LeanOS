@@ -49,11 +49,12 @@ uint32_t align_addr_down(uint32_t addr) {
 
 void reserve_kernel_space() {
   // Kernel size in bytes divided by 4096 bytes in a frame gives us frames
-  int frames = (int)(get_kernel_size() / 4096);
+  int frames = (int)(get_kernel_size() / 4096) + 1;
 
   // Loaded in at 1MB divided by the bytes per page gives us starting page
   int starting_kernel_frame = 0x00100000 / 4096;
   int final_frame = starting_kernel_frame + frames;
+  //  printf("%d\n", final_frame);
   // We want to reserve the first MB as well to not run the risk of overwriting bios info
   for (int i = 0; i < final_frame; i++) {
     pmm[i] = 1;

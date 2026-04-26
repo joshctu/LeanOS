@@ -22,6 +22,7 @@ void set_newest_written(int value) { newest_written = value; }
 
 // Take the current 25 lines (as determined by our head pointer) and copy it to
 // the vga buffer.
+// TODO: Add the render_line() check for the shell here and then move it to the terminal module.
 void viewport_sync() {
   line_t flat_range[25];
   for (int i = 0; i < 25; i++) {
@@ -92,20 +93,16 @@ void shift_head(int shift_by, Direction dir) {
   }
 
   int head_from_oldest = (sbb_head - oldest_written + SBB_SIZE) % SBB_SIZE;
-  int head_from_newest =
-      (((sbb_head + 24) % SBB_SIZE) - newest_written + SBB_SIZE) % SBB_SIZE;
+  int head_from_newest = (((sbb_head + 24) % SBB_SIZE) - newest_written + SBB_SIZE) % SBB_SIZE;
 
   if (head_from_oldest > SBB_SIZE / 2)
     sbb_head = oldest_written;
 
   // This exists outside the normal flow becuase it needs to rerender the active
   // line if you page down to the end.
-  if (head_from_newest < SBB_SIZE / 2) {
+  if (head_from_newest < SBB_SIZE / 2)
     sbb_head = (newest_written - 23 + SBB_SIZE) % SBB_SIZE;
-    viewport_sync(get_terminal_buffer());
-    render_line();
-    return;
-  }
+
   viewport_sync(get_terminal_buffer());
 }
 

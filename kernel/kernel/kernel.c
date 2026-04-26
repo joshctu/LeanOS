@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
@@ -38,10 +39,13 @@ void kernel_main(uint32_t magic, uint32_t addr) {
   pit_reload(0xFFFE);
 
   vmm_reg_list_init();
-  char *someval = vmm_kalloc_mem();
-  char *anotherval = vmm_kalloc_mem();
-  vmm_free_mem(someval);
   print_all_regions();
+  char *new_string = vmm_kalloc_mem();
+  strcpy(new_string, "This is a string that we are allocating at runtime");
+  print_all_regions();
+  vmm_free_mem(new_string);
+  print_all_regions();
+
   // shell_init();
   while (1) {
     __asm__ __volatile__("hlt");
