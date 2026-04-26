@@ -32,8 +32,7 @@ char *trim_prefixed_whitespace(char *input) {
   while (*ptr == ' ') {
     ptr++;
   }
-
-  return ptr;
+return ptr;
 }
 
 char *trim_trailing_whitespace(char *input) {

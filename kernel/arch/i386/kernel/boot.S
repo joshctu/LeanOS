@@ -53,6 +53,8 @@ _start:
 
 	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 0
 	movl $(boot_page_table1 - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 768 * 4
+  // Recursive directory entry
+	movl $(boot_page_directory - 0xC0000000 + 0x003), boot_page_directory - 0xC0000000 + 1023 * 4
 
 	movl $(boot_page_directory - 0xC0000000), %ecx
 	movl %ecx, %cr3

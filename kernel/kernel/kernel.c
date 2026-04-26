@@ -11,6 +11,7 @@
 #include <kernel/pit.h>
 #include <kernel/shell.h>
 #include <kernel/tty.h>
+#include <kernel/vmm.h>
 
 extern uint32_t _kernel_start;
 
@@ -21,22 +22,27 @@ void kernel_main(uint32_t magic, uint32_t addr) {
   gdt_initialize();
   PIC_remap();
   idt_initialize();
-  pmm_init(mbi);
 
   terminal_initialize();
+  pmm_init(mbi);
 
   if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
     printf("Invalid bootloader format\n");
   } else {
     printf("Booting using multiboot standard...\n");
   }
-  generate_boot_logs(mbi);
 
-  shell_init();
+  generate_boot_logs(mbi);
 
   __asm__ __volatile__("sti");
   pit_reload(0xFFFE);
 
+  vmm_reg_list_init();
+  char *someval = vmm_kalloc_mem();
+  char *anotherval = vmm_kalloc_mem();
+  vmm_free_mem(someval);
+  print_all_regions();
+  // shell_init();
   while (1) {
     __asm__ __volatile__("hlt");
   }

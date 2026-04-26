@@ -7,6 +7,7 @@
 extern uint32_t _kernel_start;
 extern uint32_t _kernel_end;
 
+// 4 kB frames
 static uint8_t pmm[PMM_BITMAP_SIZE];
 
 uint32_t detect_available_mem(multiboot_info_t *mbi) {
@@ -17,8 +18,7 @@ uint32_t detect_available_mem(multiboot_info_t *mbi) {
   start = (multiboot_memory_map_t *)(mbi->mmap_addr + 0xC0000000);
 
   for (; (uintptr_t)start < (mbi->mmap_addr + 0xC0000000) + mbi->mmap_length;
-       start = (multiboot_memory_map_t *)((uintptr_t)start + start->size +
-                                          sizeof(start->size))) {
+       start = (multiboot_memory_map_t *)((uintptr_t)start + start->size + sizeof(start->size))) {
     if (start->type == 1) {
 
       available_ram += start->len;
@@ -29,9 +29,7 @@ uint32_t detect_available_mem(multiboot_info_t *mbi) {
 }
 
 // Return kernel size in bytes
-uint32_t get_kernel_size() {
-  return (((uint32_t)&_kernel_end - 0xC0000000) - (uint32_t)&_kernel_start);
-}
+uint32_t get_kernel_size() { return (((uint32_t)&_kernel_end - 0xC0000000) - (uint32_t)&_kernel_start); }
 
 uint32_t align_addr_up(uint32_t addr) {
   do {
@@ -55,8 +53,10 @@ void reserve_kernel_space() {
 
   // Loaded in at 1MB divided by the bytes per page gives us starting page
   int starting_kernel_frame = 0x00100000 / 4096;
-  for (int i = 0; i < frames; i++) {
-    pmm[starting_kernel_frame + i] = 1;
+  int final_frame = starting_kernel_frame + frames;
+  // We want to reserve the first MB as well to not run the risk of overwriting bios info
+  for (int i = 0; i < final_frame; i++) {
+    pmm[i] = 1;
   }
 }
 
@@ -65,13 +65,10 @@ void pmm_init(multiboot_info_t *mbi) {
     pmm[i] = 1;
   }
 
-  multiboot_memory_map_t *start =
-      (multiboot_memory_map_t *)(mbi->mmap_addr + 0xC0000000);
+  multiboot_memory_map_t *start = (multiboot_memory_map_t *)(mbi->mmap_addr + 0xC0000000);
 
   for (; (uintptr_t)start < (mbi->mmap_addr + 0xC0000000) + mbi->mmap_length;
-       start =
-           (multiboot_memory_map_t *)((uintptr_t)start +
-                                      (start->size + sizeof(start->size)))) {
+       start = (multiboot_memory_map_t *)((uintptr_t)start + (start->size + sizeof(start->size)))) {
 
     if (start->type == 1) {
       uint32_t start_addr = align_addr_up(start->addr);
@@ -88,7 +85,6 @@ void pmm_init(multiboot_info_t *mbi) {
 
   reserve_kernel_space();
 }
-
 
 uint32_t alloc_phys_pg() {
 

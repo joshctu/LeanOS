@@ -145,6 +145,6 @@ timer_interrupt_handler(interrupt_frame_t *f) {
 __attribute__((interrupt, used)) void page_fault_handler(interrupt_frame_t *f) {
   uint32_t fault_addr;
   asm volatile("mov %%cr2, %0" : "=r"(fault_addr));
-  printf("page fault at: %x\n", fault_addr);
+  printf("page fault at: %x", fault_addr);
   asm volatile("cli; hlt");
 }

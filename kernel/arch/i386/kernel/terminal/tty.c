@@ -54,7 +54,15 @@ void cursor_right() {
 
 void new_line() {
   sbb_col_idx = input_start;
-  sbb_row_idx++;
+
+  // TODO: Trying to write to sbb line 222 causes a triple fault.
+  if (++sbb_row_idx == 221) {
+    return;
+  };
+
+  if (sbb_row_idx > 24 && (sbb_row_idx - get_sbb_head()) % 25 == 0) {
+    shift_head(1, DIR_DOWN);
+  }
   set_cursor(get_cursor());
 }
 
