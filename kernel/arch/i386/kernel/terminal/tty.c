@@ -1,4 +1,5 @@
 #include <kernel/io.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +19,7 @@ static int input_start;
 static int sbb_row_idx;
 static int sbb_col_idx;
 
-static active_program_t active_program;
+static active_program_t active_program = {.program_set = false};
 
 uint16_t *get_terminal_buffer() { return terminal_buffer; }
 active_program_t *get_active_program() { return &active_program; }
@@ -31,12 +32,23 @@ void set_cursor(size_t pos) {
   outb(0x3D5, (uint8_t)((pos >> 8) & (0xFF)));
 }
 
+void viewport_sync() {
+  scrollback_buffer_t *sbb = get_sbb();
+
+  line_t flat_range[25];
+  for (int i = 0; i < 25; i++) {
+    memcpy(&flat_range[i], &(*sbb)[(i + get_sbb_head()) % SBB_SIZE], sizeof(line_t));
+  }
+  memcpy(terminal_buffer, flat_range, sizeof(flat_range));
+}
+
 void terminal_initialize(void) {
   sbb_row_idx = 0;
   sbb_col_idx = 0;
   input_start = 0;
   terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
   sbb_init();
+  viewport_sync();
 }
 
 void cursor_right() {
@@ -48,6 +60,7 @@ void cursor_right() {
       shift_head(1, DIR_DOWN);
     }
   }
+  viewport_sync();
 }
 
 void new_line() {
@@ -61,6 +74,7 @@ void new_line() {
     shift_head(1, DIR_DOWN);
   }
   sbb_col_idx = input_start;
+  viewport_sync();
   set_cursor(get_cursor());
 }
 
@@ -73,6 +87,7 @@ void terminal_setcolor(uint8_t color) { terminal_color = color; }
 
 void terminal_render_line(const tty_line_t *line) {
   snap_to_active_line(sbb_row_idx);
+  viewport_sync();
 
   int curr_row = (sbb_row_idx - get_sbb_head() + SBB_SIZE) % SBB_SIZE;
 
@@ -137,6 +152,7 @@ void terminal_clear_screen() {
   sbb_reset();
   sbb_row_idx = 0;
   sbb_col_idx = 0;
+  viewport_sync();
   set_cursor(get_cursor());
 }
 
@@ -144,11 +160,16 @@ bool handle_key_local(key_event_t event) {
   switch (event.key) {
   case KEY_PG_UP:
     shift_head(5, DIR_UP);
+    viewport_sync();
     set_cursor(get_cursor());
     return true;
     break;
   case KEY_PG_DOWN:
     shift_head(5, DIR_DOWN);
+    viewport_sync();
+    if (is_at_bottom() && active_program.program_set) {
+      render_active_input_line();
+    }
     set_cursor(get_cursor());
     return true;
     break;

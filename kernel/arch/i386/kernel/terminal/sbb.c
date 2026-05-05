@@ -4,11 +4,12 @@
 #include <kernel/tty.h>
 #include <kernel/vga.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-scrollback_buffer_t sbb;
+static scrollback_buffer_t sbb;
 static int sbb_head = 0;
 static int oldest_written;
 static int newest_written;
@@ -20,16 +21,7 @@ int get_newest_written() { return newest_written; }
 void set_oldest_written(int value) { oldest_written = value; }
 void set_newest_written(int value) { newest_written = value; }
 
-// Take the current 25 lines (as determined by our head pointer) and copy it to
-// the vga buffer.
-// TODO: Add the render_line() check for the shell here and then move it to the terminal module.
-void viewport_sync() {
-  line_t flat_range[25];
-  for (int i = 0; i < 25; i++) {
-    memcpy(flat_range[i], sbb[(i + sbb_head) % SBB_SIZE], sizeof(line_t));
-  }
-  memcpy(get_terminal_buffer(), flat_range, 4000);
-}
+scrollback_buffer_t *get_sbb() { return &sbb; }
 
 // Initialize sbb set all entries blank and sync to viewport
 void sbb_init() {
@@ -38,7 +30,6 @@ void sbb_init() {
       sbb[line][cell] = vga_entry(' ', VGA_COLOR_GREEN);
     }
   }
-  viewport_sync(get_terminal_buffer());
   oldest_written = 0;
   newest_written = 0;
 }
@@ -53,8 +44,6 @@ void sbb_write_char(int sbb_row_idx, int sbb_col_idx, uint16_t value) {
   }
 
   sbb[sbb_row_idx][sbb_col_idx] = value;
-
-  viewport_sync(get_terminal_buffer());
 }
 
 void sbb_write_line(int sbb_row_idx, line_t *line) {
@@ -66,7 +55,6 @@ void sbb_write_line(int sbb_row_idx, line_t *line) {
   }
 
   memcpy(sbb[sbb_row_idx], *line, sizeof(*line));
-  viewport_sync(get_terminal_buffer());
 }
 
 void sbb_reset() {
@@ -79,10 +67,9 @@ void sbb_reset() {
   oldest_written = 0;
   newest_written = 0;
   sbb_head = 0;
-
-  viewport_sync(get_terminal_buffer());
 }
 
+bool is_at_bottom() { return (sbb_head == (newest_written - 23 + SBB_SIZE) % SBB_SIZE); }
 // Shift the sbb head pointer. For now, the logic to prevent the buffer
 // from ever shifting past the oldest/newest written lines is baked in.
 void shift_head(int shift_by, Direction dir) {
@@ -102,8 +89,6 @@ void shift_head(int shift_by, Direction dir) {
   // line if you page down to the end.
   if (head_from_newest < SBB_SIZE / 2)
     sbb_head = (newest_written - 23 + SBB_SIZE) % SBB_SIZE;
-
-  viewport_sync(get_terminal_buffer());
 }
 
 void snap_to_active_line(int sbb_row_idx) {
@@ -114,6 +99,4 @@ void snap_to_active_line(int sbb_row_idx) {
   while (sbb_row_idx - sbb_head != 24) {
     sbb_head = increment_buf_value(sbb_head, SBB_SIZE);
   }
-
-  viewport_sync(get_terminal_buffer());
 }

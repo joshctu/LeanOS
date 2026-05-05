@@ -2,8 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <kernel/disk.h>
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
+#include <kernel/kheap.h>
 #include <kernel/logs.h>
 #include <kernel/mmap.h>
 #include <kernel/multiboot.h>
@@ -13,8 +15,6 @@
 #include <kernel/shell.h>
 #include <kernel/tty.h>
 #include <kernel/vmm.h>
-
-extern uint32_t _kernel_start;
 
 void kernel_main(uint32_t magic, uint32_t addr) {
   multiboot_info_t *mbi;
@@ -37,16 +37,12 @@ void kernel_main(uint32_t magic, uint32_t addr) {
 
   __asm__ __volatile__("sti");
   pit_reload(0xFFFE);
-
   vmm_reg_list_init();
-  print_all_regions();
-  char *new_string = vmm_kalloc_mem();
-  strcpy(new_string, "This is a string that we are allocating at runtime");
-  print_all_regions();
-  vmm_free_mem(new_string);
-  print_all_regions();
+  kheap_init();
 
-  // shell_init();
+  identify_disk();
+  shell_init();
+
   while (1) {
     __asm__ __volatile__("hlt");
   }

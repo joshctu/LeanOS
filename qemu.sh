@@ -2,5 +2,5 @@
 set -e
 . ./iso.sh
 
-qemu-system-$(./target-triplet-to-arch.sh $HOST) -cpu pentium3 -monitor stdio -cdrom LEANOS.iso
+qemu-system-$(./target-triplet-to-arch.sh $HOST) -cpu pentium3 -drive file=virt_drive.img,format=raw,if=ide -cdrom LEANOS.iso -boot d -monitor stdio
 

@@ -29,19 +29,21 @@ typedef struct {
 } tty_line_t;
 
 typedef struct {
+  bool program_set;
   shell_t *shell;
 } active_program_t;
 
 active_program_t *get_active_program();
 uint16_t *get_terminal_buffer();
 
+void viewport_sync();
 void terminal_initialize(void);
 void terminal_write(const char *data, size_t size);
 void terminal_setcolor(uint8_t color);
-void terminal_clear_screen();
 void terminal_handle_key(key_event_t event);
 void terminal_render_line(const tty_line_t *line);
 void terminal_commit_line(const tty_line_t *line);
+void terminal_clear_screen();
 
 void write_fwd(char c);
 void new_line();

@@ -7,7 +7,7 @@
 
 #define MAX_SHELL_ARGS 32
 
-void render_line() {
+void render_active_input_line() {
   active_program_t *active_program = get_active_program();
   input_buf_t *input_buf = get_input_buf();
 
@@ -21,10 +21,8 @@ void render_line() {
 
 void input_proc_reset() {
   input_buf_reset();
-  render_line();
+  render_active_input_line();
 }
-
-void input_proc_sanitize_buf() {}
 
 char *trim_prefixed_whitespace(char *input) {
   char *ptr = input;
@@ -115,15 +113,18 @@ bool input_proc_handle_key(key_event_t event) {
   input_buf_t *input_buf = get_input_buf();
   active_program_t *active_program = get_active_program();
 
+  if (!active_program->program_set)
+    return false;
+
   switch (event.key) {
   case KEY_CHAR:
     if (event.ch == '\b') {
       input_buf_delete();
-      render_line();
+      render_active_input_line();
       return true;
     }
     if (input_buf_write(event.ch)) {
-      render_line();
+      render_active_input_line();
       return true;
     }
     break;

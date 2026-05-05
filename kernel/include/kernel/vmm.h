@@ -5,6 +5,11 @@
 
 #define MAX_VM_REGIONS 4096
 
+typedef enum {
+  VMM_REGION_KERNEL,
+  VMM_REGION_USER,
+} vmm_region_t;
+
 typedef struct _vm_reg_t {
   struct _vm_reg_t *next;
   uintptr_t start_addr;
@@ -18,7 +23,7 @@ typedef struct _vm_mem_map_t {
 } vm_mem_map_t;
 
 void vmm_reg_list_init();
-void *vmm_kalloc_mem();
+void *vmm_alloc_pages();
 int vmm_free_mem(void *ptr);
 void print_all_regions();
 

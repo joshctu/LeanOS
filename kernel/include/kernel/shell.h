@@ -9,7 +9,6 @@
 
 typedef struct {
   char *prompt;
-
 } shell_t;
 
 void shell_init();
