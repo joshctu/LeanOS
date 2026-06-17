@@ -114,7 +114,7 @@ vm_reg_t *get_start_of_kernel_reg() {
   return i;
 }
 
-// This currently will only allocate continuous free regions.
+// This currently will only allocate n continuous free regions.
 // Probably want this to be able to allocate n free regions regardless of continuity
 void *vmm_alloc_pages(vmm_region_t vmm_region, size_t n, uint32_t flags) {
 
@@ -157,20 +157,22 @@ void *vmm_alloc_pages(vmm_region_t vmm_region, size_t n, uint32_t flags) {
       uint32_t pt_index = (last_mapped_va >> 12) & 0x3FF;
       uint32_t *pg_table = (uint32_t *)(0xFFC00000 + pd_index * 0x1000);
 
+      vm_reg_t *new_reg = alloc_reg();
+      uintptr_t start_addr = last_mapped_va;
+      new_reg->start_addr = start_addr;
+
       // Allocate and insert n pages since we found a valid location
       for (size_t pages = 0; pages < n; pages++) {
         pg_table[pt_index + pages] = alloc_phys_pg() | reg_flags;
-        vm_reg_t *new_reg = alloc_reg();
-        uintptr_t start_addr = last_mapped_va + (0x1000 * pages);
-        new_reg->start_addr = start_addr;
-        new_reg->end_addr = start_addr + 0x1000;
-        new_reg->flags = pg_table[pt_index] & 0xFFF;
-
-        new_reg->next = curr_region->next;
-        curr_region->next = new_reg;
-
-        curr_region = curr_region->next;
       }
+
+      new_reg->end_addr = start_addr + (0x1000 * n);
+      new_reg->flags = pg_table[pt_index] & 0xFFF;
+
+      new_reg->next = curr_region->next;
+      curr_region->next = new_reg;
+
+      curr_region = curr_region->next;
       return (void *)(last_mapped_va);
     }
   }
@@ -185,20 +187,24 @@ void print_all_regions() {
   }
 }
 
+// Need to add a page removal argument
 int vmm_free_mem(void *ptr) {
 
+  // This loop strategy exists so we can maintain the reference to the previous node for removal.
   for (vm_reg_t *i = vm_map.dummy_reg; i->next->next; i = i->next) {
-    // This loop strategy exists so we can maintain the reference to the previous node for removal.
     if (i->next->start_addr == (uint32_t)ptr) {
+      int frames_in_reg = (int)(i->next->end_addr - i->next->start_addr) / 0x1000;
       uint32_t pde = ((uint32_t)ptr >> 22) & 0x3FF;
       uint32_t *pte = (uint32_t *)(0xFFC00000 + pde * 0x1000);
       uint32_t pt = ((uint32_t)ptr >> 12) & 0x3FF;
       uint32_t x;
 
-      // Zero out 4Kb page
-      dealloc_phys_pg(pte[pt] & 0xFFFFF000);
-      pte[pt] = 0;
-      __asm__ __volatile__("invlpg (%0)" ::"r"(i->next->start_addr) : "memory");
+      // Zero out region
+      for (int y = 0; y < frames_in_reg; y++) {
+        dealloc_phys_pg(pte[pt + y] & 0xFFFFF000);
+        pte[pt + y] = 0;
+        __asm__ __volatile__("invlpg (%0)" ::"r"(i->next->start_addr + (y * 0x1000)) : "memory");
+      }
 
       for (x = 0; pte[x] == 0 && x < 1024; x++)
         ;

@@ -9,15 +9,24 @@ static heap_t kheap;
 void kheap_init() { heap_init(&kheap); }
 
 void *kmalloc(uint32_t size) {
-  if (kheap.fblock == 0) {
-    heap_add_block(&kheap, (uintptr_t)vmm_alloc_pages(VMM_REGION_KERNEL, 1, 0x003), 0x0001000, 16);
+  // Check 4KB block amount needed to accomodate this allocation
+  int blk_requirement = (int)(size / 3800) + 1;
+  // If no block on heap
+  if (kheap.dummy.next == 0) {
+    heap_add_block(&kheap, (uintptr_t)vmm_alloc_pages(VMM_REGION_KERNEL, 1 * blk_requirement, 0x003), 0x0001000 * blk_requirement, 16);
   }
 
+  // First malloc attempt
   void *addr = heap_malloc(&kheap, size);
 
+  // If failed add new block and try again
   if ((uintptr_t)addr == 0) {
-    heap_add_block(&kheap, (uintptr_t)vmm_alloc_pages(VMM_REGION_KERNEL, 1, 0x003), 0x0001000, 16);
+    heap_add_block(&kheap, (uintptr_t)vmm_alloc_pages(VMM_REGION_KERNEL, 1 * blk_requirement, 0x003), 0x0001000 * blk_requirement, 16);
     addr = heap_malloc(&kheap, size);
+
+    if (addr == 0) {
+      return NULL;
+    }
   }
 
   return addr;
@@ -31,20 +40,9 @@ int kfree(void *ptr) {
 void kheap_reg_dump() {
   heap_block_t *b;
   int block = 1;
-  uint8_t *bm;
 
-  for (b = kheap.fblock; b; b = b->next) {
-    int unique_writes = 0;
-    bm = (uint8_t *)&b[1];
-
-    for (uint32_t x = 0; x < (b->size / b->sbsize); x++) {
-      if (bm[x] != 5 && bm[x] != 0) {
-        unique_writes++;
-        int bid = bm[x];
-        for (x; bm[x + 1] == bid; x++)
-          ;
-      }
-    }
+  for (b = kheap.dummy.next; b; b = b->next) {
+    int unique_writes = get_unique_writes(b);
     printf("Block number: %d\n", block);
     printf("    Bytes allocated from block: %d/%d\n", b->used * b->sbsize, b->size);
     printf("    Unique writes: %d\n", unique_writes);

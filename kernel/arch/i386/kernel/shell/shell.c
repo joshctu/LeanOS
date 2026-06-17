@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <kernel/disk.h>
 #include <kernel/input_proc.h>
 #include <kernel/kheap.h>
 #include <kernel/shell.h>
@@ -39,12 +40,32 @@ void shell_read(size_t argc, char *argv[]) {
     printf("%s\n", command_list);
     return;
   }
+  if (strcmp(argv[0], "ls")) {
+    read_root_dir();
+    return;
+  }
 
   if (strcmp(argv[0], "echo") && argc > 1) {
     for (size_t i = 1; i < argc; i++) {
       printf("%s ", argv[i]);
     }
     printf("\n");
+  }
+
+  if (strcmp(argv[0], "find") && argc > 1) {
+    dir_entry_t new_entry;
+    if (find_in_root(argv[1], &new_entry)) {
+      char *file_type = new_entry.file_attr == 0x10 ? "directory" : "file";
+      printf("file name: %s\nfile type: %s\nfile size: %d bytes\nfirst cluster number: %d\n", new_entry.file_name, file_type, new_entry.file_size,
+             new_entry.first_cluster_num);
+    }
+  }
+
+  if (strcmp(argv[0], "cat") && argc > 1) {
+    dir_entry_t new_entry;
+    if (find_in_root(argv[1], &new_entry)) {
+      follow_cluster_chain(new_entry);
+    }
   }
 
   if (strcmp(argv[0], "mmap")) {

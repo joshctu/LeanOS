@@ -5,19 +5,39 @@
 #include <stdint.h>
 #include <stdio.h>
 
-void heap_init(heap_t *heap) { heap->fblock = 0; }
+void heap_init(heap_t *heap) {
+  heap_block_t dummy = {.next = 0, .size = 0, .sbsize = 0, .lfb = 0, .used = 0};
+  heap->dummy = dummy;
+}
+
+int get_unique_writes(heap_block_t *b) {
+  int ret = 0;
+  uint8_t *bm = (uint8_t *)&b[1];
+  for (uint32_t x = 0; x < (b->size / b->sbsize); x++) {
+    if (bm[x] != 5 && bm[x] != 0) {
+      ret++;
+      int bid = bm[x];
+      for (x; bm[x + 1] == bid; x++)
+        ;
+    }
+  }
+  return ret;
+}
 
 int heap_add_block(heap_t *heap, uintptr_t addr, uint32_t size, uint32_t sbsize) {
   heap_block_t *b;
+  heap_block_t *last_block;
   uint32_t sbcnt;
   uint8_t *bm;
 
   b = (heap_block_t *)addr;
   b->size = size - sizeof(heap_block_t);
   b->sbsize = sbsize;
+  b->next = 0;
 
-  b->next = heap->fblock;
-  heap->fblock = b;
+  for (last_block = &heap->dummy; last_block->next; last_block = last_block->next)
+    ;
+  last_block->next = b;
 
   sbcnt = size / sbsize;
 
@@ -60,12 +80,11 @@ void *heap_malloc(heap_t *heap, uint32_t size) {
   uint8_t *bm;
   uint32_t nid;
 
-  for (b = heap->fblock; b; b = b->next) {
+  for (b = heap->dummy.next; b; b = b->next) {
 
     if (b->size - (b->used * b->sbsize) >= size) {
 
       sbcnt = b->size / b->sbsize;
-
       sbneed = (size + b->sbsize - 1) / b->sbsize;
 
       bm = (uint8_t *)&b[1];
@@ -104,12 +123,14 @@ void *heap_malloc(heap_t *heap, uint32_t size) {
 
 int free(heap_t *heap, void *ptr) {
   heap_block_t *b;
+  heap_block_t *prev;
   uint8_t *bm;
   size_t bm_idx, x;
   size_t bm_idx_id;
 
-  for (b = heap->fblock; b; b = b->next) {
+  for (prev = &heap->dummy; prev->next; prev = prev->next) {
     // Block has been found
+    b = prev->next;
     if ((uintptr_t)ptr > (uintptr_t)b && (uintptr_t)ptr < (uintptr_t)&b[1] + b->size) {
       bm = (uint8_t *)&b[1];
       // Our address - the start of the data region gives relative address
@@ -125,6 +146,10 @@ int free(heap_t *heap, void *ptr) {
       b->lfb = bm_idx;
       b->used -= x - bm_idx;
 
+      if (!get_unique_writes(b)) {
+        prev->next = b->next;
+        vmm_free_mem(b);
+      }
       return 1;
     }
   }
