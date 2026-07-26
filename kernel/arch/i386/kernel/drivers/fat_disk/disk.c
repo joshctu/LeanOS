@@ -3,6 +3,7 @@
 #include <kernel/io.h>
 #include <kernel/kheap.h>
 #include <kernel/string_utils.h>
+#include <kernel/tty.h>
 #include <kernel/vga.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -12,6 +13,7 @@
 
 static uint16_t *identify_info_buffer;
 static fat_BS_t drive_mount;
+static cwd_t cwd;
 static fat_extBS_16_t extended_drive_mount_16;
 static fat_extBS_32_t extended_drive_mount_32;
 static drive_t curr_drive;
@@ -79,7 +81,8 @@ void identify_disk() {
   }
 }
 
-void write_to_disk(uint32_t LBA) {
+// This input buffer must be on the heap!!
+void write_to_disk(uint32_t LBA, uint8_t *buffer) {
   // Select master drive and OR highest 4 bits of LBA
   outb(DRV_SELECT_REG, 0xE0 | ((LBA >> 24) & 0x0F));
   outb(DRV_SECTOR_COUNT_REG, (uint8_t)1);
@@ -93,14 +96,12 @@ void write_to_disk(uint32_t LBA) {
     status = inb(DRV_STATUS_AND_COMMAND_REG);
   } while (status & 0x80 && !(status & 0x08));
 
-  char *buffer = kmalloc(512);
   uint16_t *data = (uint16_t *)buffer;
 
   for (int x = 0; x < 256; x++) {
     outw(DRV_DATA_REG, data[x]);
   }
   flush_cache_and_wait_for_rdy();
-  kfree(buffer);
 }
 
 uint16_t *read_from_disk(uint32_t LBA) {
@@ -326,6 +327,10 @@ void mount_disk() {
   uint32_t root_dir_lba = curr_drive.first_fat_sector + (drive_mount.table_count * curr_drive.fat_size) + drive_mount.hidden_sector_count;
   curr_drive.root_dir_lba = root_dir_lba;
 
+  cwd.is_root = true;
+  cwd.cluster = 0;
+  cwd.name = "root";
+
   if (total_clusters < 4085) {
     curr_drive.fat_type = FAT12;
   } else if (total_clusters < 65535) {
@@ -337,12 +342,161 @@ void mount_disk() {
   kfree(BPB);
 }
 
+bool is_end_of_entry(uint16_t cluster) {
+  if (cluster >= 0xFFF7) {
+    return true;
+  }
+  return false;
+}
+
+cwd_t *get_cwd() { return &cwd; }
+
 uint32_t cluster_to_lba(uint16_t cluster_num) { return curr_drive.first_data_sector + ((cluster_num - 2) * drive_mount.sectors_per_cluster); }
 
+// Given a cluster, returns the cluster number of its parent cluster
+uint32_t get_parent_cluster(uint32_t cluster) {
+  uint32_t curr_lba = cluster_to_lba(cluster);
+  for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
+
+    uint8_t *dir_buf = (uint8_t *)read_from_disk(curr_lba + i);
+
+    for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
+
+      if (dir_buf[j] == 0) {
+        kfree(dir_buf);
+        goto done;
+      }
+
+      if (dir_buf[j] == 0xE5)
+        continue;
+
+      uint8_t attr = dir_buf[j + 11];
+
+      // Skip LFN entries for now. Not supported
+      if (attr == 0x0F)
+        continue;
+
+      // Is a volume_id
+      if (attr == 0x08)
+        continue;
+
+      char file_name[12];
+      memcpy(file_name, &dir_buf[j], 11);
+      file_name[11] = '\0';
+      char file_string[12];
+      char *dir_name = format_from_83(file_name, file_string);
+      if (strcmp(dir_name, "..")) {
+        uint16_t first_cluster;
+        memcpy(&first_cluster, &dir_buf[j + 26], 2);
+        kfree(dir_buf);
+        return first_cluster;
+      }
+    }
+  }
+done:
+  printf("Parent not found\n");
+  return 0;
+}
+
+// Given a cluster number, this function returns the name of the directory it belongs to.
+// RETURNS HEAP ALLOCATED MEMORY
+char *get_name_from_cluster(uint32_t cluster) {
+
+  if (cluster == 0) {
+    return "root";
+  }
+
+  uint32_t parent_cluster = get_parent_cluster(cluster);
+
+  if (parent_cluster == 0) {
+    for (uint32_t i = 0; i < curr_drive.root_dir_sectors; i++) {
+      uint8_t *root_dir_sector_buf = (uint8_t *)read_from_disk(curr_drive.root_dir_lba + i);
+      for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
+
+        if (root_dir_sector_buf[j] == 0) {
+          kfree(root_dir_sector_buf);
+          return false;
+        }
+
+        if (root_dir_sector_buf[j] == 0xE5) {
+          continue;
+        }
+
+        uint8_t attr = root_dir_sector_buf[j + 11];
+        if (attr == 0x0F) {
+          continue;
+        }
+
+        uint16_t cluster_num;
+        memcpy(&cluster_num, &(root_dir_sector_buf[j + 26]), 2);
+        if (cluster_num == cluster) {
+          char file_name[12];
+          memcpy(file_name, &root_dir_sector_buf[j], 11);
+          file_name[11] = '\0';
+          char *file_string = kmalloc(12);
+
+          format_from_83(file_name, file_string);
+          kfree(root_dir_sector_buf);
+          return file_string;
+        }
+      }
+      kfree(root_dir_sector_buf);
+    }
+  } else {
+
+    uint32_t curr_lba = cluster_to_lba(parent_cluster);
+    for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
+
+      uint8_t *dir_buf = (uint8_t *)read_from_disk(curr_lba + i);
+
+      for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
+
+        if (dir_buf[j] == 0) {
+          kfree(dir_buf);
+          goto done;
+        }
+
+        if (dir_buf[j] == 0xE5)
+          continue;
+
+        uint8_t attr = dir_buf[j + 11];
+
+        // Skip LFN entries for now. Not supported
+        if (attr == 0x0F)
+          continue;
+
+        // Is a volume_id
+        if (attr == 0x08)
+          continue;
+
+        // File
+        if (attr == 0x20)
+          continue;
+
+        if (attr == 0x10) {
+          uint32_t dir_cluster;
+          memcpy(&dir_cluster, &dir_buf[j + 26], 2);
+
+          if (dir_cluster == cluster) {
+            char file_name[12];
+            memcpy(file_name, &dir_buf[j], 11);
+            file_name[11] = '\0';
+            char *file_string = kmalloc(12);
+            format_from_83(file_name, file_string);
+            kfree(dir_buf);
+            return file_string;
+          }
+        }
+      }
+    }
+  }
+done:
+  return "Directory not found";
+}
+
+// Prints root directory files/directories
 void read_root_dir() {
-
   for (uint32_t i = 0; i < curr_drive.root_dir_sectors; i++) {
-
     uint8_t *root_dir_sector_buf = (uint8_t *)read_from_disk(curr_drive.root_dir_lba + i);
     for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
 
@@ -385,7 +539,8 @@ done:
   return;
 }
 
-void read_cluster(uint32_t cluster, uint32_t bytes_remaining) {
+// Prints all the data from a file given a starting cluster number
+uint32_t read_file_cluster(uint32_t cluster, uint32_t bytes_remaining) {
   uint32_t curr_lba = cluster_to_lba(cluster);
   uint32_t bytes_left = bytes_remaining;
   for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
@@ -394,18 +549,178 @@ void read_cluster(uint32_t cluster, uint32_t bytes_remaining) {
     }
     uint8_t *sector_buf = (uint8_t *)read_from_disk(curr_lba + i);
     uint32_t bytes_to_print = bytes_left > 512 ? 512 : bytes_left;
+    bytes_left -= bytes_to_print;
 
-    for (int j = 0; j < bytes_to_print; j++) {
+    for (uint32_t j = 0; j < bytes_to_print; j++) {
       putchar(sector_buf[j]);
     }
     kfree(sector_buf);
   }
+  return bytes_left;
 }
 
-bool find_in_root(char *name, dir_entry_t *out) {
+// Given a starting directory cluster, prints all entries in the directory
+void read_dir_cluster(uint32_t cluster) {
+  uint32_t curr_lba = cluster_to_lba(cluster);
+  for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
 
+    uint8_t *dir_buf = (uint8_t *)read_from_disk(curr_lba + i);
+
+    for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
+
+      if (dir_buf[j] == 0) {
+        kfree(dir_buf);
+        goto done;
+      }
+
+      if (dir_buf[j] == 0xE5)
+        continue;
+
+      uint8_t attr = dir_buf[j + 11];
+
+      // Skip LFN entries for now. Not supported
+      if (attr == 0x0F)
+        continue;
+
+      // Is a volume_id
+      if (attr == 0x08)
+        continue;
+
+      // Directory
+      if (attr == 0x10)
+        terminal_setcolor(VGA_COLOR_LIGHT_BLUE);
+
+      // File
+      if (attr == 0x20)
+        terminal_setcolor(VGA_COLOR_CYAN);
+
+      char file_name[12];
+      memcpy(file_name, &dir_buf[j], 11);
+      file_name[11] = '\0';
+      char file_string[12];
+      printf("%s\n", format_from_83(file_name, file_string));
+    }
+  }
+done:
+  return;
+}
+
+void format_into_dir_buffer(dir_entry_t *dir_entry, uint8_t *buffer, int index) {
+  memcpy(&buffer[index], dir_entry->file_name, 11);
+  memcpy(&buffer[index + 11], &dir_entry->file_attr, 1);
+  memset(&buffer[index + 13], 0, 1);
+  memset(&buffer[index + 20], 0, 2);
+  memcpy(&buffer[index + 26], &dir_entry->first_cluster_num, 2);
+  memset(&buffer[index + 28], 0, 4);
+}
+
+void init_dir(uint32_t parent_cluster, dir_entry_t *dir_entry) {
+
+  dir_entry_t curr_dir;
+  curr_dir.file_name = ".";
+  curr_dir.file_attr = 0x10;
+  curr_dir.file_size = 0;
+  curr_dir.first_cluster_num = dir_entry->first_cluster_num;
+
+  dir_entry_t parent_dir;
+  parent_dir.file_name = "..";
+  parent_dir.file_attr = 0x10;
+  parent_dir.file_size = 0;
+  parent_dir.first_cluster_num = parent_cluster;
+
+  uint8_t *dir_buffer = kmalloc(512);
+
+  format_into_dir_buffer(&curr_dir, dir_buffer, 0);
+  format_into_dir_buffer(&parent_dir, dir_buffer, 32);
+
+  uint32_t lba = cluster_to_lba(dir_entry->first_cluster_num);
+
+  write_to_disk(lba, dir_buffer);
+  kfree(dir_buffer);
+
+  // init all other sectors to 0
+  for (int i = 1; i < drive_mount.sectors_per_cluster; i++) {
+    uint8_t *init_buffer = kmalloc(512);
+    memset(init_buffer, 0, 512);
+    write_to_disk(lba + i, init_buffer);
+    kfree(init_buffer);
+  }
+}
+
+void create_root_dir_entry(dir_entry_t *dir_entry) {
   for (uint32_t i = 0; i < curr_drive.root_dir_sectors; i++) {
+    uint8_t *root_dir_sector_buf = (uint8_t *)read_from_disk(curr_drive.root_dir_lba + i);
+    for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
 
+      uint8_t attr = root_dir_sector_buf[j + 11];
+
+      if (attr == 0x10 || attr == 0x20) {
+        char name[12];
+        memcpy(name, &root_dir_sector_buf, 11);
+        name[11] = '\0';
+        if (strcmp(name, dir_entry->file_name)) {
+          kfree(root_dir_sector_buf);
+          printf("File name already exists\n");
+          goto done;
+        }
+      }
+      if (root_dir_sector_buf[j] == 0) {
+        format_into_dir_buffer(dir_entry, root_dir_sector_buf, j);
+        write_to_disk(curr_drive.root_dir_lba + i, root_dir_sector_buf);
+        kfree(root_dir_sector_buf);
+
+        init_dir(0, dir_entry);
+        goto done;
+      }
+    }
+  }
+done:
+  return;
+}
+
+void create_dir_entry(uint32_t cluster, dir_entry_t *dir_entry) {
+  uint32_t curr_lba = cluster_to_lba(cluster);
+  for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
+    uint8_t *dir_buf = (uint8_t *)read_from_disk(curr_lba + i);
+    for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
+
+      uint8_t attr = dir_buf[j + 11];
+
+      if (attr == 0x10 || attr == 0x20) {
+        char name[12];
+        memcpy(name, &dir_buf[j], 11);
+        name[11] = '\0';
+
+        if (strcmp(name, dir_entry->file_name)) {
+          printf("File name already exists\n");
+          goto done;
+        }
+      }
+
+      if (dir_buf[j] == 0) {
+        memcpy(&dir_buf[j], dir_entry->file_name, 11);
+        memcpy(&dir_buf[j + 11], &dir_entry->file_attr, 1);
+        memset(&dir_buf[j + 13], 0, 1);
+        memset(&dir_buf[j + 20], 0, 2);
+        memcpy(&dir_buf[j + 26], &dir_entry->first_cluster_num, 2);
+        memset(&dir_buf[j + 28], 0, 4);
+        write_to_disk(curr_lba + i, dir_buf);
+        kfree(dir_buf);
+
+        init_dir(cluster, dir_entry);
+
+        goto done;
+      }
+    }
+    kfree(dir_buf);
+  }
+done:
+  return;
+}
+
+// Matches on a file or directory in the root directory
+bool find_in_root(char *name, dir_entry_t *out) {
+  for (uint32_t i = 0; i < curr_drive.root_dir_sectors; i++) {
     uint8_t *root_dir_sector_buf = (uint8_t *)read_from_disk(curr_drive.root_dir_lba + i);
     for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
 
@@ -443,68 +758,62 @@ bool find_in_root(char *name, dir_entry_t *out) {
   return false;
 }
 
-uint32_t dir_lookup(char *dir_path) {
-
-  // Clean entry
-  char *cleaned_path = trim_middling_slash(
-      trim_prefixed_slash(trim_trailing_slash(trim_middling_whitespace(trim_prefixed_whitespace(trim_trailing_whitespace(dir_path))))));
-
-  if (strlen(cleaned_path) == 0)
-    return 0;
-
-  uint32_t argc = 1;
-  for (char *x = cleaned_path; *x != '\0'; x++) {
-    if (*x == '/')
-      argc++;
+// Matches on a file or directory in the current directory.
+bool find_file(char *name, dir_entry_t *out) {
+  if (cwd.is_root) {
+    return find_in_root(name, out);
   }
 
-  char argv[argc][12];
-  printf("%d\n", sizeof(argv[0]));
+  uint16_t active_cluster = cwd.cluster;
+  while (!is_end_of_entry(active_cluster)) {
 
-  uint32_t argi = 0;
-  char *ptr = cleaned_path;
-  char *start = cleaned_path;
+    uint32_t curr_lba = cluster_to_lba(active_cluster);
+    for (uint32_t i = 0; i < drive_mount.sectors_per_cluster; i++) {
 
-  while (1) {
+      uint8_t *dir_buf = (uint8_t *)read_from_disk(curr_lba + i);
 
-    if (*ptr == '/' || *ptr == '\0') {
+      for (int j = 0; j < drive_mount.bytes_per_sector; j += 32) {
 
-      char saved = *ptr;
-      *ptr = '\0';
+        if (dir_buf[j] == 0) {
+          kfree(dir_buf);
+          goto done;
+        }
 
-      format_to_83(start, argv[argi]);
-      argv[argi][11] = '\0';
+        if (dir_buf[j] == 0xE5)
+          continue;
 
-      argi++;
+        uint8_t attr = dir_buf[j + 11];
 
-      if (saved == '\0')
-        break;
+        // Skip LFN entries for now. Not supported
+        if (attr == 0x0F)
+          continue;
 
-      start = ptr + 1;
+        // Is a volume_id
+        if (attr == 0x08)
+          continue;
+
+        char file_name[12];
+        memcpy(file_name, &dir_buf[j], 11);
+        file_name[11] = '\0';
+        char file_string[12];
+        format_from_83(file_name, file_string);
+
+        if (strcmp(file_string, name)) {
+          memcpy(&(out->first_cluster_num), &dir_buf[j + 26], 2);
+          if (strcmp(name, "..")) {
+            out->file_name = get_name_from_cluster(out->first_cluster_num);
+
+          } else {
+            out->file_name = name;
+          }
+          out->file_attr = attr;
+          memcpy(&(out->file_size), &dir_buf[j + 28], 4);
+          kfree(dir_buf);
+          return true;
+        }
+      }
+      kfree(dir_buf);
     }
-    ptr++;
-  }
-
-  for (uint32_t i = 0; i < argc; i++) {
-    printf("%s\n", argv[i]);
-  }
-  return 0;
-  // Attempt to follow the path to get the last cluster
-}
-
-bool is_end_of_file(uint16_t cluster) {
-  if (cluster >= 0xFFF7) {
-    return true;
-  }
-  return false;
-}
-
-void follow_cluster_chain(dir_entry_t file) {
-  uint16_t active_cluster = file.first_cluster_num;
-  uint32_t bytes_remaining = file.file_size;
-
-  while (!is_end_of_file(active_cluster)) {
-    read_cluster((uint32_t)active_cluster, bytes_remaining);
 
     unsigned int fat_offset = active_cluster * 2;
     unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
@@ -515,5 +824,148 @@ void follow_cluster_chain(dir_entry_t file) {
     uint16_t table_value = *(uint16_t *)&FAT_table[ent_offset];
     active_cluster = table_value;
     kfree(FAT_table);
+  }
+done:
+  return false;
+}
+
+// Follow a cluster chain, calling the functions that dump directory/file names to the terminal
+void follow_cluster_chain(dir_entry_t entry) {
+  uint16_t active_cluster = entry.first_cluster_num;
+  uint32_t bytes_remaining = entry.file_size;
+
+  while (!is_end_of_entry(active_cluster)) {
+    if (entry.file_attr == 0x20) {
+      read_file_cluster((uint32_t)active_cluster, bytes_remaining);
+    }
+
+    if (entry.file_attr == 0x10) {
+      read_dir_cluster((uint32_t)active_cluster);
+    }
+
+    unsigned int fat_offset = active_cluster * 2;
+    unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
+    unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
+
+    uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
+
+    uint16_t table_value = *(uint16_t *)&FAT_table[ent_offset];
+    active_cluster = table_value;
+    kfree(FAT_table);
+  }
+}
+void read_curr_dir() {
+  if (cwd.is_root) {
+    read_root_dir();
+    return;
+  }
+
+  uint16_t active_cluster = cwd.cluster;
+  while (!is_end_of_entry(active_cluster)) {
+    read_dir_cluster((uint32_t)active_cluster);
+
+    unsigned int fat_offset = active_cluster * 2;
+    unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
+    unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
+
+    uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
+
+    uint16_t table_value = *(uint16_t *)&FAT_table[ent_offset];
+    active_cluster = table_value;
+    kfree(FAT_table);
+  }
+}
+
+// Set a new working directory
+bool set_new_dir(char *name) {
+  dir_entry_t new_entry;
+  if (find_file(name, &new_entry) && new_entry.file_attr == 0x10) {
+    cwd.cluster = new_entry.first_cluster_num;
+    cwd.is_root = cwd.cluster == 0;
+    kfree(cwd.name);
+    cwd.name = new_entry.file_name;
+    return true;
+  }
+  printf("Directory not found\n");
+  return false;
+}
+
+// Iterate through file cluster chain, calling the function that dumps to terminal
+void dump_file(dir_entry_t entry) {
+  uint16_t active_cluster = entry.first_cluster_num;
+  uint32_t bytes_remaining = entry.file_size;
+
+  while (!is_end_of_entry(active_cluster)) {
+    if (entry.file_attr != 0x20) {
+      printf("Is a directory\n");
+      break;
+    }
+
+    bytes_remaining = read_file_cluster((uint32_t)active_cluster, bytes_remaining);
+    unsigned int fat_offset = active_cluster * 2;
+    unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
+    unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
+
+    uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
+
+    uint16_t table_value = *(uint16_t *)&FAT_table[ent_offset];
+    active_cluster = table_value;
+    kfree(FAT_table);
+  }
+}
+
+uint16_t get_unused_cluster() {
+  uint16_t starting_cluster = 2;
+  uint16_t fat_value = 0xFFFF;
+
+  while (fat_value != 0x0) {
+    unsigned int fat_offset = starting_cluster * 2;
+    unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
+    unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
+
+    uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
+    fat_value = *(uint16_t *)&FAT_table[ent_offset];
+    starting_cluster += 1;
+    kfree(FAT_table);
+  }
+
+  return starting_cluster -= 1;
+}
+
+// TODO: This function needs to handle the case where last cluster is full
+void create_dir(char *dir_name) {
+  uint16_t active_cluster = cwd.cluster;
+
+  while (true) {
+    unsigned int fat_offset = active_cluster * 2;
+    unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
+    unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
+
+    uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
+
+    uint16_t table_value = *(uint16_t *)&FAT_table[ent_offset];
+
+    // We want to iterate through until we arrive at the
+    // last cluster in the current directory
+    if (table_value >= 0xFFF8) {
+      kfree(FAT_table);
+      break;
+    }
+    active_cluster = table_value;
+    kfree(FAT_table);
+  }
+  dir_entry_t new_dir;
+  char file_name_out[12];
+
+  format_to_83(dir_name, file_name_out);
+  new_dir.file_name = file_name_out;
+  new_dir.file_attr = 0x10;
+  new_dir.file_size = 0;
+  new_dir.first_cluster_num = get_unused_cluster();
+
+  if (cwd.is_root) {
+    create_root_dir_entry(&new_dir);
+  } else {
+    create_dir_entry(active_cluster, &new_dir);
   }
 }

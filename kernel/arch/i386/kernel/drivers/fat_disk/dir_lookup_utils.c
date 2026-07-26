@@ -1,26 +1,26 @@
 #include <kernel/dir_lookup_utils.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
-char *format_to_83(char *in, char out[12]) {
+void format_to_83(char *in, char out[12]) {
   char *input = in;
-  memset(out, ' ', 12);
+  memset(out, ' ', 11);
   int x = 0;
 
   if (strlen(in) > 11) {
     printf("File name too big\n");
-    return NULL;
+    return;
   }
 
-  while (*input != '\0' && *input != '.') {
+  while (*input != '\0' && *input != '.' && x < 8) {
     char curr_char = *input;
 
     if (curr_char >= 'a' && curr_char <= 'z')
       curr_char -= 32;
 
-    out[x] = curr_char;
+    out[x++] = curr_char;
     input++;
-    x++;
   }
 
   // We know there is an extension and now need to handle it
@@ -34,14 +34,11 @@ char *format_to_83(char *in, char out[12]) {
       if (curr_char >= 'a' && curr_char <= 'z')
         curr_char -= 32;
 
-      out[x] = curr_char;
-
+      out[x++] = curr_char;
       input++;
-      x++;
     }
   }
-
-  return out;
+  out[11] = '\0';
 }
 
 char *format_from_83(char in[12], char out[12]) {
@@ -51,13 +48,19 @@ char *format_from_83(char in[12], char out[12]) {
     if (input[i] == ' ')
       break;
 
-    out[pos++] = input[i] += 32;
+    if (input[i] == '.' || input[i] < 'A' || input[i] > 'Z') {
+      out[pos++] = input[i];
+    } else {
+      out[pos++] = input[i] += 32;
+    }
   }
 
   if (input[8] != ' ') {
     out[pos++] = '.';
 
     for (int j = 8; j < 11; j++) {
+      if (input[j] == ' ')
+        break;
       out[pos++] = input[j] += 32;
     }
   }

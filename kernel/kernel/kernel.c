@@ -42,6 +42,7 @@ void kernel_main(uint32_t magic, uint32_t addr) {
 
   identify_disk();
   mount_disk();
+
   shell_init();
 
   while (1) {

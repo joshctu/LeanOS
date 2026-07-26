@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define PROMPT "root@leanos$ "
+#define PROMPT "@leanos$ "
 
 typedef struct {
   char *prompt;

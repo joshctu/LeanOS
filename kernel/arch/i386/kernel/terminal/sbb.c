@@ -70,6 +70,7 @@ void sbb_reset() {
 }
 
 bool is_at_bottom() { return (sbb_head == (newest_written - 23 + SBB_SIZE) % SBB_SIZE); }
+bool is_at_top() { return sbb_head == 0; }
 // Shift the sbb head pointer. For now, the logic to prevent the buffer
 // from ever shifting past the oldest/newest written lines is baked in.
 void shift_head(int shift_by, Direction dir) {

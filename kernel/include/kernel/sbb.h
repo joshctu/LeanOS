@@ -22,6 +22,7 @@ void set_newest_written();
 void set_oldest_written();
 int get_sbb_head();
 bool is_at_bottom();
+bool is_at_top();
 scrollback_buffer_t *get_sbb();
 void sbb_write_char(int sbb_row_idx, int sbb_col_idx, uint16_t value);
 void sbb_write_line(int sbb_row_idx, line_t *line);

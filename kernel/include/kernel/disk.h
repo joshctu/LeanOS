@@ -83,8 +83,13 @@ typedef struct drive {
   uint32_t total_clusters;
   uint32_t root_dir_lba;
   FAT_Type fat_type;
-
 } __attribute__((packed)) drive_t;
+
+typedef struct cwd {
+  bool is_root;
+  uint16_t cluster;
+  char *name;
+} cwd_t;
 
 typedef struct dir_entry {
   char *file_name;
@@ -94,11 +99,15 @@ typedef struct dir_entry {
 } dir_entry_t;
 
 void identify_disk();
-void write_to_disk(uint32_t LBA);
+void write_to_disk(uint32_t LBA, uint8_t *buffer);
 uint16_t *read_from_disk(uint32_t LBA);
-void read_root_dir();
-bool find_in_root(char *name, dir_entry_t *out);
+cwd_t *get_cwd();
+void read_curr_dir();
+bool find_file(char *name, dir_entry_t *out);
 void follow_cluster_chain(dir_entry_t file);
+void dump_file(dir_entry_t file);
+bool set_new_dir(char *name);
 void mount_disk();
 uint32_t dir_lookup(char *dir_path);
+void create_dir(char *dir_name);
 #endif

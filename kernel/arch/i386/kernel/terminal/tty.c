@@ -159,6 +159,9 @@ void terminal_clear_screen() {
 bool handle_key_local(key_event_t event) {
   switch (event.key) {
   case KEY_PG_UP:
+    if (is_at_top()) {
+      return true;
+    }
     shift_head(5, DIR_UP);
     viewport_sync();
     set_cursor(get_cursor());

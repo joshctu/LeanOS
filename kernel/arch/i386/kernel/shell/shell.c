@@ -12,6 +12,7 @@
 #include <kernel/vmm.h>
 
 shell_t shell;
+char *curr_dir;
 
 const char *command_list = "Available commands...\nhelp, clear, echo";
 
@@ -19,7 +20,8 @@ void shell_init() {
   terminal_setcolor(4);
   printf("\nInitializing shell... [Ok]\n");
 
-  shell.prompt = PROMPT;
+  curr_dir = "root";
+  shell.prompt = strcat(curr_dir, PROMPT);
 
   active_program_t *active_program = get_active_program();
 
@@ -40,10 +42,6 @@ void shell_read(size_t argc, char *argv[]) {
     printf("%s\n", command_list);
     return;
   }
-  if (strcmp(argv[0], "ls")) {
-    read_root_dir();
-    return;
-  }
 
   if (strcmp(argv[0], "echo") && argc > 1) {
     for (size_t i = 1; i < argc; i++) {
@@ -52,9 +50,22 @@ void shell_read(size_t argc, char *argv[]) {
     printf("\n");
   }
 
+  if (strcmp(argv[0], "ls")) {
+    if (argc == 1) {
+      read_curr_dir();
+      return;
+    }
+    if (argc > 1) {
+      dir_entry_t new_entry;
+      if (find_file(argv[1], &new_entry)) {
+        follow_cluster_chain(new_entry);
+      }
+    }
+  }
+
   if (strcmp(argv[0], "find") && argc > 1) {
     dir_entry_t new_entry;
-    if (find_in_root(argv[1], &new_entry)) {
+    if (find_file(argv[1], &new_entry)) {
       char *file_type = new_entry.file_attr == 0x10 ? "directory" : "file";
       printf("file name: %s\nfile type: %s\nfile size: %d bytes\nfirst cluster number: %d\n", new_entry.file_name, file_type, new_entry.file_size,
              new_entry.first_cluster_num);
@@ -63,9 +74,22 @@ void shell_read(size_t argc, char *argv[]) {
 
   if (strcmp(argv[0], "cat") && argc > 1) {
     dir_entry_t new_entry;
-    if (find_in_root(argv[1], &new_entry)) {
-      follow_cluster_chain(new_entry);
+    if (find_file(argv[1], &new_entry)) {
+      dump_file(new_entry);
     }
+  }
+
+  if (strcmp(argv[0], "cd") && argc > 1) {
+    if (set_new_dir(argv[1])) {
+      cwd_t *cwd = get_cwd();
+      curr_dir = cwd->name;
+      kfree(shell.prompt);
+      shell.prompt = strcat(curr_dir, PROMPT);
+    }
+  }
+
+  if (strcmp(argv[0], "mkdir") && argc > 1) {
+    create_dir(argv[1]);
   }
 
   if (strcmp(argv[0], "mmap")) {
