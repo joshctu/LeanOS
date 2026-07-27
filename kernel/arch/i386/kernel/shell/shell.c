@@ -89,7 +89,11 @@ void shell_read(size_t argc, char *argv[]) {
   }
 
   if (strcmp(argv[0], "mkdir") && argc > 1) {
-    create_dir(argv[1]);
+    create_fs_entry(argv[1], DIRECTORY);
+  }
+
+  if (strcmp(argv[0], "touch") && argc > 1) {
+    create_fs_entry(argv[1], FILE);
   }
 
   if (strcmp(argv[0], "mmap")) {

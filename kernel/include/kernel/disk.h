@@ -23,6 +23,9 @@
 #define READ_SECTORS 0x20
 #define WRITE_SECTORS 0x30
 
+#define DIRECTORY 0x10
+#define FILE 0x20
+
 typedef enum {
   FAT12,
   FAT16,
@@ -109,5 +112,5 @@ void dump_file(dir_entry_t file);
 bool set_new_dir(char *name);
 void mount_disk();
 uint32_t dir_lookup(char *dir_path);
-void create_dir(char *dir_name);
+void create_fs_entry(char *entry_name, uint8_t attr);
 #endif

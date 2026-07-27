@@ -707,7 +707,8 @@ void create_dir_entry(uint32_t cluster, dir_entry_t *dir_entry) {
         write_to_disk(curr_lba + i, dir_buf);
         kfree(dir_buf);
 
-        init_dir(cluster, dir_entry);
+        if (dir_entry->file_attr == DIRECTORY)
+          init_dir(cluster, dir_entry);
 
         goto done;
       }
@@ -918,22 +919,28 @@ uint16_t get_unused_cluster() {
   uint16_t starting_cluster = 2;
   uint16_t fat_value = 0xFFFF;
 
-  while (fat_value != 0x0) {
+  while (true) {
     unsigned int fat_offset = starting_cluster * 2;
     unsigned int fat_sector = curr_drive.first_fat_sector + (fat_offset / drive_mount.bytes_per_sector);
     unsigned int ent_offset = fat_offset % drive_mount.bytes_per_sector;
 
     uint8_t *FAT_table = (uint8_t *)read_from_disk(fat_sector);
     fat_value = *(uint16_t *)&FAT_table[ent_offset];
+    if (fat_value == 0x0) {
+      *(uint16_t *)&FAT_table[ent_offset] = 0xFFFF;
+      write_to_disk(fat_sector, FAT_table);
+      kfree(FAT_table);
+      break;
+    }
     starting_cluster += 1;
     kfree(FAT_table);
   }
 
-  return starting_cluster -= 1;
+  return starting_cluster;
 }
 
 // TODO: This function needs to handle the case where last cluster is full
-void create_dir(char *dir_name) {
+void create_fs_entry(char *entry_name, uint8_t attr) {
   uint16_t active_cluster = cwd.cluster;
 
   while (true) {
@@ -954,18 +961,18 @@ void create_dir(char *dir_name) {
     active_cluster = table_value;
     kfree(FAT_table);
   }
-  dir_entry_t new_dir;
+  dir_entry_t new_entry;
   char file_name_out[12];
 
-  format_to_83(dir_name, file_name_out);
-  new_dir.file_name = file_name_out;
-  new_dir.file_attr = 0x10;
-  new_dir.file_size = 0;
-  new_dir.first_cluster_num = get_unused_cluster();
+  format_to_83(entry_name, file_name_out);
+  new_entry.file_name = file_name_out;
+  new_entry.file_attr = attr;
+  new_entry.file_size = 0;
+  new_entry.first_cluster_num = attr == 0x10 ? get_unused_cluster() : 0;
 
   if (cwd.is_root) {
-    create_root_dir_entry(&new_dir);
+    create_root_dir_entry(&new_entry);
   } else {
-    create_dir_entry(active_cluster, &new_dir);
+    create_dir_entry(active_cluster, &new_entry);
   }
 }
