@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define INPUT_BUF_SIZE 65
+#define INPUT_BUF_SIZE 66
 
 typedef struct {
   char data[INPUT_BUF_SIZE];

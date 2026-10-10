@@ -2,6 +2,7 @@
 #include <kernel/shell.h>
 #include <kernel/string_utils.h>
 #include <kernel/tty.h>
+#include <kernel/vga.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,11 +10,11 @@
 #define MAX_SHELL_ARGS 32
 
 void render_active_input_line() {
-  active_program_t *active_program = get_active_program();
   input_buf_t *input_buf = get_input_buf();
 
+  shell_t *shell_info = get_shell_info();
   terminal_render_line(&(tty_line_t){
-      .prompt = active_program->shell->prompt,
+      .prompt = shell_info->prompt,
       .buf = input_buf->data,
       .size = input_buf->size,
       .cursor = input_buf->cursor,
@@ -61,10 +62,7 @@ void tokenize_and_send_to_shell(char *input) {
 // There may come a day where this needs to handle more than the shell.
 bool input_proc_handle_key(key_event_t event) {
   input_buf_t *input_buf = get_input_buf();
-  active_program_t *active_program = get_active_program();
-
-  if (!active_program->program_set)
-    return false;
+  shell_t *shell_info = get_shell_info();
 
   switch (event.key) {
   case KEY_CHAR:
@@ -80,7 +78,7 @@ bool input_proc_handle_key(key_event_t event) {
     break;
   case KEY_ENTER:
     terminal_commit_line(&(tty_line_t){
-        .prompt = active_program->shell->prompt,
+        .prompt = shell_info->prompt,
         .buf = input_buf->data,
         .size = input_buf->size,
         .cursor = input_buf->cursor,

@@ -24,19 +24,12 @@ typedef struct {
 typedef struct {
   const char *prompt;
   const char *buf;
-  size_t size;
-  size_t cursor;
+  int size;
+  int cursor;
 } tty_line_t;
 
-typedef struct {
-  bool program_set;
-  shell_t *shell;
-} active_program_t;
-
-active_program_t *get_active_program();
 uint16_t *get_terminal_buffer();
 
-void viewport_sync();
 void terminal_initialize(void);
 void terminal_write(const char *data, size_t size);
 void terminal_setcolor(uint8_t color);

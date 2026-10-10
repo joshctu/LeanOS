@@ -12,11 +12,12 @@ static input_buf_t input_buf = {
 input_buf_t *get_input_buf() { return &input_buf; }
 
 bool input_buf_write(char c) {
-  if (input_buf.size >= INPUT_BUF_SIZE - 1) {
+  if (input_buf.size >= INPUT_BUF_SIZE - 2) {
     return false;
   }
 
   input_buf.data[input_buf.cursor] = c;
+
   input_buf.cursor++;
   input_buf.size++;
 
@@ -35,7 +36,7 @@ void input_buf_delete() {
 
 void input_buf_reset() {
 
-  for (size_t i = 0; i < input_buf.size; i++) {
+  for (int i = 0; i < input_buf.size; i++) {
     input_buf.data[i] = '\0';
   }
   input_buf.cursor = 0;

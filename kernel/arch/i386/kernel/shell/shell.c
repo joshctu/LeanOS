@@ -23,12 +23,10 @@ void shell_init() {
   curr_dir = "root";
   shell.prompt = strcat(curr_dir, PROMPT);
 
-  active_program_t *active_program = get_active_program();
-
-  active_program->shell = &shell;
-  active_program->program_set = true;
   input_proc_reset();
 }
+
+shell_t *get_shell_info() { return &shell; }
 
 void shell_read(size_t argc, char *argv[]) {
   if (argc == 0)
@@ -61,6 +59,11 @@ void shell_read(size_t argc, char *argv[]) {
         follow_cluster_chain(new_entry);
       }
     }
+  }
+
+  if (strcmp(argv[0], "vim")) {
+    // open_vim_buf();
+    return;
   }
 
   if (strcmp(argv[0], "find") && argc > 1) {

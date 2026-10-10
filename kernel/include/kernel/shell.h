@@ -12,8 +12,8 @@ typedef struct {
 } shell_t;
 
 void shell_init();
+shell_t *get_shell_info();
 void shell_read(size_t argc, char *argv[]);
-char *get_prompt();
 size_t get_active_line();
 
 #endif
