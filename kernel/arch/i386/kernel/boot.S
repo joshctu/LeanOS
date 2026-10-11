@@ -70,10 +70,7 @@ _start:
 .section .text
 
 3:
-	# At this point, paging is fully set up and enabled.
-
-
-	# Unmap the identity mapping as it is now unnecessary.
+	# Get rid of identity map
 	movl $0, boot_page_directory + 0
 
 	# Reload cr3 to force a TLB flush so the changes to take effect.
@@ -89,7 +86,7 @@ _start:
 	# Enter the high-level kernel.
 	call kernel_main
 
-	# Infinite loop if the system has nothing more to do.
+	# Infinite loop
 	cli
 1:	hlt
 	jmp 1b

@@ -80,6 +80,7 @@ int sbb_write_line(scrollback_buffer_t *sbb, line_t *line) {
 
   memcpy((*sbb->sbb_instance)[sbb->sbb_row_idx], *line, sizeof(*line));
 
+  viewport_sync(sbb);
   return compute_screen_position(sbb);
 }
 
@@ -132,14 +133,6 @@ int snap_to_active_line(scrollback_buffer_t *sbb) {
   }
 
   return compute_screen_position(sbb);
-}
-
-void viewport_sync(scrollback_buffer_t *sbb, uint16_t *terminal_buffer) {
-  line_t flat_range[25];
-  for (int i = 0; i < 25; i++) {
-    memcpy(&flat_range[i], &(*sbb->sbb_instance)[(i + sbb->sbb_head) % SBB_SIZE], sizeof(line_t));
-  }
-  memcpy(terminal_buffer, flat_range, sizeof(flat_range));
 }
 
 size_t get_buf_value(size_t value, size_t buf_size) { return (value % buf_size); }

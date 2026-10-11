@@ -28,9 +28,16 @@ typedef struct {
   int cursor;
 } tty_line_t;
 
+typedef struct {
+  void (*handler_fxn)(key_event_t key_event);
+  void *context;
+} tty_owner_t;
+
 uint16_t *get_terminal_buffer();
+uint8_t get_terminal_color();
 
 void terminal_initialize(void);
+void terminal_set_cursor(size_t pos);
 void terminal_write(const char *data, size_t size);
 void terminal_setcolor(uint8_t color);
 void terminal_handle_key(key_event_t event);
@@ -42,8 +49,6 @@ void write_fwd(char c);
 void new_line();
 
 void cursor_right();
-void update_cursor(void);
-size_t get_cursor(void);
 
 void handle_page_up();
 void handle_page_down();

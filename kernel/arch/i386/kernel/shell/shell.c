@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include <kernel/disk.h>
-#include <kernel/input_proc.h>
+#include <kernel/kernel_sbb.h>
 #include <kernel/kheap.h>
 #include <kernel/shell.h>
 #include <kernel/tty.h>
