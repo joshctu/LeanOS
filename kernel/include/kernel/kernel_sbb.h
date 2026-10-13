@@ -7,10 +7,10 @@
 
 scrollback_buffer_t *get_shell_sbb();
 void (*get_shell_key_handler(void))(key_event_t key_event);
-void tokenize_and_send_to_shell(char *input);
+int tokenize_and_send_to_shell(char *input);
 void input_proc_reset();
 void render_active_input_line();
-void shell_handler_key_event(key_event_t key_event);
+void shell_handle_key_event(key_event_t key_event);
 int get_kernel_sbb_head(void);
 void kernel_sbb_init();
 int kernel_sbb_write_line(tty_line_t *line);

@@ -9,6 +9,7 @@
 #include <kernel/kheap.h>
 #include <kernel/shell.h>
 #include <kernel/tty.h>
+#include <kernel/vim.h>
 #include <kernel/vmm.h>
 
 shell_t shell;
@@ -28,17 +29,17 @@ void shell_init() {
 
 shell_t *get_shell_info() { return &shell; }
 
-void shell_read(size_t argc, char *argv[]) {
+int shell_read(size_t argc, char *argv[]) {
   if (argc == 0)
-    return;
+    return 0;
 
   if (strcmp(argv[0], "clear")) {
     terminal_clear_screen();
-    return;
+    return 0;
   }
   if (strcmp(argv[0], "help")) {
     printf("%s\n", command_list);
-    return;
+    return 0;
   }
 
   if (strcmp(argv[0], "echo") && argc > 1) {
@@ -51,7 +52,6 @@ void shell_read(size_t argc, char *argv[]) {
   if (strcmp(argv[0], "ls")) {
     if (argc == 1) {
       read_curr_dir();
-      return;
     }
     if (argc > 1) {
       dir_entry_t new_entry;
@@ -59,11 +59,12 @@ void shell_read(size_t argc, char *argv[]) {
         follow_cluster_chain(new_entry);
       }
     }
+    return 0;
   }
 
   if (strcmp(argv[0], "vim")) {
-    // open_vim_buf();
-    return;
+    set_editor_active();
+    return 1;
   }
 
   if (strcmp(argv[0], "find") && argc > 1) {
@@ -73,6 +74,7 @@ void shell_read(size_t argc, char *argv[]) {
       printf("file name: %s\nfile type: %s\nfile size: %d bytes\nfirst cluster number: %d\n", new_entry.file_name, file_type, new_entry.file_size,
              new_entry.first_cluster_num);
     }
+    return 0;
   }
 
   if (strcmp(argv[0], "cat") && argc > 1) {
@@ -80,6 +82,7 @@ void shell_read(size_t argc, char *argv[]) {
     if (find_file(argv[1], &new_entry)) {
       dump_file(new_entry);
     }
+    return 0;
   }
 
   if (strcmp(argv[0], "cd") && argc > 1) {
@@ -89,14 +92,17 @@ void shell_read(size_t argc, char *argv[]) {
       kfree(shell.prompt);
       shell.prompt = strcat(curr_dir, PROMPT);
     }
+    return 0;
   }
 
   if (strcmp(argv[0], "mkdir") && argc > 1) {
     create_fs_entry(argv[1], DIRECTORY);
+    return 0;
   }
 
   if (strcmp(argv[0], "touch") && argc > 1) {
     create_fs_entry(argv[1], FILE);
+    return 0;
   }
 
   if (strcmp(argv[0], "mmap")) {
@@ -105,17 +111,18 @@ void shell_read(size_t argc, char *argv[]) {
         char *size_arg = argv[2];
         char *somestring = kmalloc(atoi(size_arg));
       }
-      return;
+      return 0;
     }
     if (argc > 1 && strcmp(argv[1], "rgndmp")) {
       print_all_regions();
-      return;
+      return 0;
     }
   }
 
   if (strcmp(argv[0], "heap")) {
     if (argc > 1 && strcmp(argv[1], "dump")) {
       kheap_reg_dump();
+      return 0;
     }
   }
 }

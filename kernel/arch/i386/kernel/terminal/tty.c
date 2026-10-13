@@ -19,9 +19,19 @@ tty_owner_t tty_owner;
 uint16_t *get_terminal_buffer() { return terminal_buffer; }
 uint8_t get_terminal_color() { return terminal_color; }
 
-void set_tty_owner(scrollback_buffer_t *sbb, void (*handler_fxn)(key_event_t key_event)) {
+void set_terminal_owner(scrollback_buffer_t *sbb, void (*handler_fxn)(key_event_t key_event)) {
   tty_owner.handler_fxn = handler_fxn;
   tty_owner.context = sbb;
+  int cursor_pos = viewport_sync(tty_owner.context);
+  terminal_set_cursor(cursor_pos);
+}
+
+void terminal_reset_owner() {
+  set_terminal_owner(get_shell_sbb(), get_shell_key_handler());
+  input_proc_reset();
+  int cursor_pos = viewport_sync(tty_owner.context);
+  render_active_input_line();
+  terminal_set_cursor(cursor_pos);
 }
 
 void terminal_set_cursor(size_t pos) {
@@ -35,36 +45,65 @@ void terminal_set_cursor(size_t pos) {
 
 void terminal_initialize(void) {
   terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
-  // Default owner is shell
+  // Default owner is shell.
   sbb_init(get_shell_sbb());
   tty_owner.handler_fxn = get_shell_key_handler();
   tty_owner.context = get_shell_sbb();
   viewport_sync(tty_owner.context);
 }
 
-void cursor_right() {
-  int cursor_pos = sbb_cursor_right(tty_owner.context);
+void terminal_cursor_right() {
+  sbb_cursor_right(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
   terminal_set_cursor(cursor_pos);
 }
 
-void new_line() {
-  int cursor_pos = sbb_new_line(tty_owner.context);
+void terminal_cursor_left() {
+  sbb_cursor_left(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
   terminal_set_cursor(cursor_pos);
 }
 
-void write_fwd(char c) {
+void terminal_cursor_up() {
+  sbb_cursor_up(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
+  terminal_set_cursor(cursor_pos);
+}
+
+void terminal_cursor_down() {
+  sbb_cursor_down(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
+  terminal_set_cursor(cursor_pos);
+}
+
+void terminal_new_line() {
+  sbb_new_line(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
+  terminal_set_cursor(cursor_pos);
+}
+
+void terminal_write_fwd(char c) {
   sbb_write_char(tty_owner.context, vga_entry(c, terminal_color));
-  int cursor_pos = sbb_cursor_right(tty_owner.context);
-  viewport_sync(tty_owner.context);
+  sbb_cursor_right(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
   terminal_set_cursor(cursor_pos);
 }
 
-void viewport_sync(scrollback_buffer_t *sbb) {
+void terminal_write_bkwd(char c) {
+  sbb_cursor_left(tty_owner.context);
+  sbb_write_char(tty_owner.context, vga_entry(c, terminal_color));
+  int cursor_pos = viewport_sync(tty_owner.context);
+  terminal_set_cursor(cursor_pos);
+}
+
+int viewport_sync(scrollback_buffer_t *sbb) {
   line_t flat_range[25];
   for (int i = 0; i < 25; i++) {
     memcpy(&flat_range[i], &(*sbb->sbb_instance)[(i + sbb->sbb_head) % SBB_SIZE], sizeof(line_t));
   }
   memcpy(terminal_buffer, flat_range, sizeof(flat_range));
+
+  return compute_screen_position(sbb);
 }
 
 void terminal_setcolor(uint8_t color) { terminal_color = color; }
@@ -72,8 +111,8 @@ void terminal_setcolor(uint8_t color) { terminal_color = color; }
 void terminal_render_line(const tty_line_t *line) {
 
   // Set the sbb header to correct value
-  int cursor_pos = snap_to_active_line(tty_owner.context);
-  viewport_sync(tty_owner.context);
+  snap_to_active_line(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
 
   // Draw prompt
   terminal_setcolor(VGA_COLOR_LIGHT_BROWN);
@@ -96,16 +135,16 @@ void terminal_render_line(const tty_line_t *line) {
 void terminal_write(const char *data, size_t size) {
   for (size_t i = 0; i < size; i++) {
     if (data[i] == '\n') {
-      new_line();
+      terminal_new_line();
     } else {
-      write_fwd(data[i]);
+      terminal_write_fwd(data[i]);
     }
   }
 }
 
 void terminal_clear_screen() {
-  int cursor_pos = sbb_reset(tty_owner.context);
-  viewport_sync(tty_owner.context);
+  sbb_reset(tty_owner.context);
+  int cursor_pos = viewport_sync(tty_owner.context);
   terminal_set_cursor(cursor_pos);
 }
 

@@ -26,9 +26,11 @@ typedef struct scrollback_buffer {
   int sbb_col_idx;
   int oldest_written_line;
   int newest_written_line;
+  int initialized; // 0 is uninitialized and 1 is initialized
 
 } scrollback_buffer_t;
 
+int compute_screen_position(scrollback_buffer_t *sbb);
 void sbb_init(scrollback_buffer_t *sbb);
 int get_newest_written(scrollback_buffer_t *sbb);
 int get_oldest_written(scrollback_buffer_t *sbb);
@@ -39,12 +41,14 @@ bool is_at_bottom(scrollback_buffer_t *sbb);
 bool is_at_top(scrollback_buffer_t *sbb);
 int sbb_write_line(scrollback_buffer_t *sbb, line_t *line);
 int sbb_cursor_right(scrollback_buffer_t *sbb);
+int sbb_cursor_left(scrollback_buffer_t *sbb);
+int sbb_cursor_down(scrollback_buffer_t *sbb);
+int sbb_cursor_up(scrollback_buffer_t *sbb);
 void sbb_write_char(scrollback_buffer_t *sbb, uint16_t value);
 int sbb_reset(scrollback_buffer_t *sbb);
 int shift_head(scrollback_buffer_t *sbb, int shift_by, Direction dir);
 int snap_to_active_line(scrollback_buffer_t *sbb);
 int sbb_new_line(scrollback_buffer_t *sbb);
-void viewport_sync();
 
 size_t get_buf_idx(size_t value, size_t buf_size);
 size_t decrement_buf_idx(size_t value, size_t buf_size);

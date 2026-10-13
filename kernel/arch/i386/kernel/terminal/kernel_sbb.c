@@ -13,12 +13,11 @@
 #define MAX_SHELL_ARGS 32
 
 static sbbuffer_instance_t kernel_sbb_instance;
-static scrollback_buffer_t kernel_sbb = {.sbb_instance = &kernel_sbb_instance};
+static scrollback_buffer_t kernel_sbb = {.sbb_instance = &kernel_sbb_instance, .initialized = 0};
 
 scrollback_buffer_t *get_shell_sbb() { return &kernel_sbb; }
 
-/* Break up the current user entered data into sanitized tokens and send to the shell parser */
-void tokenize_and_send_to_shell(char *input) {
+int tokenize_and_send_to_shell(char *input) {
   char *clean_input = trim_middling_whitespace(trim_trailing_whitespace(trim_prefixed_whitespace(input)));
 
   char *argv[MAX_SHELL_ARGS];
@@ -48,7 +47,7 @@ void tokenize_and_send_to_shell(char *input) {
 
   argv[argc] = NULL;
 
-  shell_read(argc, argv);
+  return shell_read(argc, argv);
 }
 
 /* Reset the shell input buffer and rerender */
@@ -79,14 +78,12 @@ void shell_handle_key_event(key_event_t key_event) {
 
   switch (key_event.key) {
   case KEY_CHAR:
-    if (key_event.ch == '\b') {
-      input_buf_delete();
-      render_active_input_line();
-      return;
-    }
-    if (input_buf_write(key_event.ch)) {
-      render_active_input_line();
-    }
+    input_buf_write(key_event.ch);
+    render_active_input_line();
+    break;
+  case KEY_BACKSPC:
+    input_buf_delete();
+    render_active_input_line();
     break;
   case KEY_ENTER:
     kernel_sbb_write_line(&(tty_line_t){
@@ -95,8 +92,11 @@ void shell_handle_key_event(key_event_t key_event) {
         .size = input_buf->size,
         .cursor = input_buf->cursor,
     });
-    tokenize_and_send_to_shell(input_buf->data);
-    input_proc_reset();
+    int res = tokenize_and_send_to_shell(input_buf->data);
+    /* Any command that would cause terminal ownership to change should run no further code */
+    if (res == 0) {
+      input_proc_reset();
+    }
     break;
   }
 }

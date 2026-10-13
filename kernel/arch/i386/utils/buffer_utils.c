@@ -1,4 +1,5 @@
 #include <kernel/buffer_utils.h>
+#include <kernel/tty.h>
 #include <kernel/vga.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +21,10 @@ int compute_screen_position(scrollback_buffer_t *sbb) {
 }
 
 void sbb_init(scrollback_buffer_t *sbb) {
+  if (sbb->initialized) {
+    return;
+  }
+
   for (int line = 0; line < SBB_SIZE; ++line) {
     for (int cell = 0; cell < 80; ++cell) {
       (*sbb->sbb_instance)[line][cell] = vga_entry(' ', VGA_COLOR_GREEN);
@@ -31,6 +36,7 @@ void sbb_init(scrollback_buffer_t *sbb) {
   sbb->sbb_col_idx = 0;
   sbb->oldest_written_line = 0;
   sbb->newest_written_line = 0;
+  sbb->initialized = 1;
 }
 
 // Write to buffer. Note that value here is a vga entry. Not a raw char
@@ -57,6 +63,48 @@ int sbb_cursor_right(scrollback_buffer_t *sbb) {
   return compute_screen_position(sbb);
 }
 
+int sbb_cursor_left(scrollback_buffer_t *sbb) {
+  if (--sbb->sbb_col_idx < 0) {
+    sbb->sbb_col_idx = VGA_WIDTH - 1;
+
+    if (sbb->sbb_row_idx == sbb->oldest_written_line) {
+      return;
+    }
+
+    sbb->sbb_row_idx = decrement_buf_idx(sbb->sbb_row_idx, SBB_SIZE);
+    if (sbb->sbb_row_idx > 24 && (sbb->sbb_row_idx - sbb->sbb_head) % 25 == 0) {
+      shift_head(sbb, DIR_UP, 1);
+    }
+  }
+
+  return compute_screen_position(sbb);
+}
+
+int sbb_cursor_up(scrollback_buffer_t *sbb) {
+  if (sbb->sbb_row_idx == sbb->oldest_written_line) {
+    return compute_screen_position(sbb);
+  }
+
+  sbb->sbb_row_idx = decrement_buf_idx(sbb->sbb_row_idx, SBB_SIZE);
+  if (sbb->sbb_row_idx > 24 && (sbb->sbb_row_idx - sbb->sbb_head) % 25 == 0) {
+    shift_head(sbb, DIR_UP, 1);
+  }
+
+  return compute_screen_position(sbb);
+}
+
+int sbb_cursor_down(scrollback_buffer_t *sbb) {
+
+  if (++sbb->sbb_row_idx == 221) {
+    return compute_screen_position(sbb);
+  };
+
+  if (sbb->sbb_row_idx > 24 && (sbb->sbb_row_idx - sbb->sbb_head) % 25 == 0) {
+    shift_head(sbb, 1, DIR_DOWN);
+  }
+
+  return compute_screen_position(sbb);
+}
 int sbb_new_line(scrollback_buffer_t *sbb) {
   // TODO: Trying to write to sbb line 222 causes a triple fault.
   if (++sbb->sbb_row_idx == 221) {
@@ -137,6 +185,6 @@ int snap_to_active_line(scrollback_buffer_t *sbb) {
 
 size_t get_buf_value(size_t value, size_t buf_size) { return (value % buf_size); }
 
-size_t decrement_buf_value(size_t value, size_t buf_size) { return ((value + buf_size) - 1) % buf_size; }
+size_t decrement_buf_idx(size_t value, size_t buf_size) { return ((value + buf_size) - 1) % buf_size; }
 
 size_t increment_buf_idx(size_t value, size_t buf_size) { return (value + 1) % buf_size; }
