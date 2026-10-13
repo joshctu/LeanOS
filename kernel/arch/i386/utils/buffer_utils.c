@@ -65,6 +65,10 @@ int sbb_cursor_right(scrollback_buffer_t *sbb) {
 
 int sbb_cursor_left(scrollback_buffer_t *sbb) {
   if (--sbb->sbb_col_idx < 0) {
+    if (sbb->sbb_row_idx == sbb->oldest_written_line) {
+      sbb->sbb_col_idx = 0;
+      return;
+    }
     sbb->sbb_col_idx = VGA_WIDTH - 1;
 
     if (sbb->sbb_row_idx == sbb->oldest_written_line) {

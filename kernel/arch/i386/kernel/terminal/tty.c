@@ -29,9 +29,8 @@ void set_terminal_owner(scrollback_buffer_t *sbb, void (*handler_fxn)(key_event_
 void terminal_reset_owner() {
   set_terminal_owner(get_shell_sbb(), get_shell_key_handler());
   input_proc_reset();
-  int cursor_pos = viewport_sync(tty_owner.context);
+  viewport_sync(tty_owner.context);
   render_active_input_line();
-  terminal_set_cursor(cursor_pos);
 }
 
 void terminal_set_cursor(size_t pos) {
