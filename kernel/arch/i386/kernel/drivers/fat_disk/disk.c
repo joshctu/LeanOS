@@ -392,6 +392,7 @@ uint32_t get_parent_cluster(uint32_t cluster) {
         return first_cluster;
       }
     }
+    kfree(dir_buf);
   }
 done:
   printf("Parent not found\n");
@@ -488,6 +489,7 @@ char *get_name_from_cluster(uint32_t cluster) {
           }
         }
       }
+      kfree(dir_buf);
     }
   }
 done:
@@ -600,6 +602,7 @@ void read_dir_cluster(uint32_t cluster) {
       char file_string[12];
       printf("%s\n", format_from_83(file_name, file_string));
     }
+    kfree(dir_buf);
   }
 done:
   return;
